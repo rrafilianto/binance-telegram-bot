@@ -7,7 +7,10 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '300M',
-      restart_delay: 5000,
+      min_uptime: '15s',
+      max_restarts: 10,
+      restart_delay: 10000,
+      exp_backoff_restart_delay: 5000,
       env: {
         NODE_ENV: 'development',
         MODE: 'dry_run',
@@ -25,7 +28,10 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '300M',
-      restart_delay: 5000,
+      min_uptime: '15s',
+      max_restarts: 10,
+      restart_delay: 10000,
+      exp_backoff_restart_delay: 5000,
       env: {
         NODE_ENV: 'production',
         MODE: 'production',

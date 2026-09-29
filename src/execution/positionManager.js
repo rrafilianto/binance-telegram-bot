@@ -1,5 +1,6 @@
 import { binanceClient } from '../binance/client.js';
 import { precisionManager } from '../binance/precision.js';
+import { userDataStream } from '../binance/userDataStream.js';
 import { getRiskConfig } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 
@@ -7,6 +8,59 @@ class PositionManager {
   constructor() {
     this.leverageCache = new Map(); // symbol -> { maxLeverage, cachedAt }
     this.CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour TTL
+    this.cachedPositions = null;
+    this.lastPositionsFetchTime = 0;
+    this.cachedBalance = null;
+    this.lastBalanceFetchTime = 0;
+
+    // Listen to real-time User Data Stream WebSocket for Account Updates (positions & balances)
+    userDataStream.on('account_update', (accountData) => {
+      this.handleAccountUpdate(accountData);
+    });
+  }
+
+  handleAccountUpdate(accountData) {
+    try {
+      // 1. Update Positions from WebSocket event
+      if (accountData?.P && Array.isArray(accountData.P)) {
+        const positions = [];
+        for (const p of accountData.P) {
+          const amt = parseFloat(p.pa);
+          if (Math.abs(amt) > 0) {
+            positions.push({
+              symbol: p.s.toUpperCase(),
+              positionAmt: p.pa,
+              entryPrice: p.ep,
+              unRealizedProfit: p.up,
+              isolatedWallet: p.iw,
+              positionSide: p.ps,
+            });
+          }
+        }
+        this.cachedPositions = positions;
+        this.lastPositionsFetchTime = Date.now();
+        logger.info('PositionManager', `Live WebSocket update: Cached positions updated (${positions.length} active).`);
+      }
+
+      // 2. Update Balances from WebSocket event
+      if (accountData?.B && Array.isArray(accountData.B)) {
+        const usdt = accountData.B.find((b) => b.a === 'USDT');
+        if (usdt) {
+          const walletBalance = parseFloat(usdt.wb || 0);
+          const crossWalletBalance = parseFloat(usdt.cw || usdt.wb || 0);
+          this.cachedBalance = {
+            walletBalance,
+            availableBalance: crossWalletBalance,
+            unrealizedPnL: 0,
+            usedMargin: Math.max(0, walletBalance - crossWalletBalance),
+            otherAssets: [],
+          };
+          this.lastBalanceFetchTime = Date.now();
+        }
+      }
+    } catch (err) {
+      logger.warn('PositionManager', `Failed to process WebSocket account_update: ${err.message}`);
+    }
   }
 
   /**
@@ -115,26 +169,43 @@ class PositionManager {
   }
 
   /**
-   * Get all currently open positions from Binance
+   * Get all currently open positions (from WebSocket cache or throttled REST)
    */
-  async getOpenPositions() {
+  async getOpenPositions(forceRefresh = false) {
+    const now = Date.now();
+    // Return cached positions if available and fresh (< 60s) unless forced
+    if (!forceRefresh && this.cachedPositions !== null && now - this.lastPositionsFetchTime < 60000) {
+      return this.cachedPositions;
+    }
+
     try {
       const positions = await binanceClient.getPositionRisk();
-      return positions.filter((p) => Math.abs(parseFloat(p.positionAmt)) > 0);
+      this.cachedPositions = positions.filter((p) => Math.abs(parseFloat(p.positionAmt)) > 0);
+      this.lastPositionsFetchTime = now;
+      return this.cachedPositions;
     } catch (err) {
-      console.error('[PositionManager] Failed to get open positions:', err.message);
+      if (this.cachedPositions !== null) {
+        logger.warn('PositionManager', `Using cached open positions (${this.cachedPositions.length}) due to REST error: ${err.message}`);
+        return this.cachedPositions;
+      }
+      logger.error('PositionManager', `Failed to get open positions: ${err.message}`);
       return [];
     }
   }
 
   /**
-   * Get Futures account balances (USDT wallet balance, available, unrealized PnL, etc.)
+   * Get Futures account balances (from WebSocket cache or throttled REST)
    */
-  async getBalance() {
+  async getBalance(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && this.cachedBalance !== null && now - this.lastBalanceFetchTime < 60000) {
+      return this.cachedBalance;
+    }
+
     try {
       const balances = await binanceClient.getBalance();
       if (!Array.isArray(balances)) {
-        return null;
+        return this.cachedBalance;
       }
       const usdt = balances.find((b) => b.asset === 'USDT') || {
         balance: '0',
@@ -152,7 +223,7 @@ class PositionManager {
         (b) => b.asset !== 'USDT' && parseFloat(b.balance) > 0
       );
 
-      return {
+      this.cachedBalance = {
         walletBalance,
         availableBalance,
         unrealizedPnL,
@@ -160,7 +231,13 @@ class PositionManager {
         otherAssets,
         raw: balances,
       };
+      this.lastBalanceFetchTime = now;
+      return this.cachedBalance;
     } catch (err) {
+      if (this.cachedBalance !== null) {
+        logger.warn('PositionManager', `Using cached balance due to REST error: ${err.message}`);
+        return this.cachedBalance;
+      }
       logger.error('PositionManager', `Failed to get balance from Binance: ${err.message}`);
       throw err;
     }

@@ -152,7 +152,40 @@ const bal = await positionManager.getBalance();
 if (bal.walletBalance !== 1500.5 || bal.availableBalance !== 1200.0 || Math.abs(bal.usedMargin - 300.5) > 0.001) {
   throw new Error(`Balance calculation failed: ${JSON.stringify(bal)}`);
 }
-binanceClient.getBalance = origGetBalance;
-console.log(`✅ Balance parser passed: Wallet=$${bal.walletBalance}, Avail=$${bal.availableBalance}, UsedMargin=$${bal.usedMargin.toFixed(2)}`);
+// 6. Test BinanceClient ban interceptor
+const origBanned = binanceClient.bannedUntil;
+binanceClient.bannedUntil = Date.now() + 5000;
+let caughtBan = false;
+try {
+  await binanceClient.request('GET', '/fapi/v1/time');
+} catch (err) {
+  if (err.message.includes('IP ban active')) {
+    caughtBan = true;
+  }
+}
+binanceClient.bannedUntil = origBanned;
+if (!caughtBan) {
+  throw new Error('Ban interceptor failed to block request.');
+}
+console.log('✅ BinanceClient ban interceptor test passed.');
+
+// 7. Test PositionManager WebSocket live cache update
+positionManager.handleAccountUpdate({
+  P: [
+    { s: 'BTCUSDT', pa: '0.050', ep: '60000', up: '15.0', iw: '0', ps: 'BOTH' },
+  ],
+  B: [
+    { a: 'USDT', wb: '2000.0', cw: '1800.0' },
+  ],
+});
+const wsPositions = await positionManager.getOpenPositions();
+if (wsPositions.length !== 1 || wsPositions[0].symbol !== 'BTCUSDT') {
+  throw new Error(`WebSocket position cache failed: ${JSON.stringify(wsPositions)}`);
+}
+const wsBalance = await positionManager.getBalance();
+if (wsBalance.walletBalance !== 2000 || wsBalance.availableBalance !== 1800) {
+  throw new Error(`WebSocket balance cache failed: ${JSON.stringify(wsBalance)}`);
+}
+console.log('✅ PositionManager WebSocket live cache update passed.');
 
 console.log('🎉 All Smoke Tests Passed Successfully!');

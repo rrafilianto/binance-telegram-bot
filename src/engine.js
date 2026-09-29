@@ -38,8 +38,12 @@ export class TradingEngine {
     logger.info('TradingEngine', `Loaded precision filters for ${exchangeInfo.symbols.length} symbols.`);
 
     // 2. Initial state reconciliation
-    logger.info('TradingEngine', 'Reconciling active positions and open orders...');
-    await ocoManager.reconcile();
+    try {
+      logger.info('TradingEngine', 'Reconciling active positions and open orders...');
+      await ocoManager.reconcile();
+    } catch (recErr) {
+      logger.warn('TradingEngine', `Initial reconciliation warning: ${recErr.message}`);
+    }
 
     // 3. Pre-load historical candles for active tokens
     await this.primeCandleHistory();
@@ -71,7 +75,7 @@ export class TradingEngine {
     const strategyConfig = getStrategyConfig();
     const activeSymbols = tokensConfig.symbols.slice(0, tokensConfig.maxTokens);
 
-    logger.info('TradingEngine', `Fetching initial candles for ${activeSymbols.length} symbols...`);
+    logger.info('TradingEngine', `Fetching initial candles for ${activeSymbols.length} symbols (throttled)...`);
 
     for (const symbol of activeSymbols) {
       this.candleHistory.set(symbol, {
@@ -92,6 +96,9 @@ export class TradingEngine {
           closeTime: k[6],
         }));
 
+        // Small pause between HTF and LTF requests
+        await new Promise((r) => setTimeout(r, 100));
+
         // Fetch LTF candles
         const ltfKlines = await binanceClient.getKlines(symbol, strategyConfig.ltfTimeframe, 100);
         const formattedLtf = ltfKlines.map((k) => ({
@@ -109,6 +116,9 @@ export class TradingEngine {
       } catch (err) {
         logger.warn('TradingEngine', `Could not fetch initial candles for ${symbol}: ${err.message}`);
       }
+
+      // Throttle between symbols to prevent rate limit spikes
+      await new Promise((r) => setTimeout(r, 150));
     }
 
     logger.info('TradingEngine', 'Primed candle history for all active symbols.');
@@ -219,9 +229,15 @@ export class TradingEngine {
     // Rekam hasil screening ke batch digest 15m untuk notifikasi Telegram
     this.recordScreeningResult(symbol, report, candle.close, closeTime);
 
+    // Jika tidak ada sinyal entry pada token ini, selesai (tanpa query API posisi)
+    const signal = report.signal;
+    if (!signal) {
+      return;
+    }
+
     // Cek apakah strategy engine sedang aktif untuk eksekusi order
     if (!state.isStrategyRunning) {
-      logger.info('TradingEngine', `[${symbol}] ${interval} closed @ $${candle.close} | Strategy PAUSED (/stop). Skipping order execution.`);
+      logger.info('TradingEngine', `[${symbol}] Valid signal detected but Strategy PAUSED (/stop). Skipping order execution.`);
       return;
     }
 
@@ -236,7 +252,7 @@ export class TradingEngine {
       return;
     }
 
-    // Cek batas maksimum posisi terbuka
+    // Cek batas maksimum posisi terbuka (hanya dijalankan jika ada sinyal valid)
     const openPositions = await positionManager.getOpenPositions();
     if (openPositions.length >= (riskConfig.maxOpenPositions || 5)) {
       logger.info('TradingEngine', `[${symbol}] Max open positions reached (${openPositions.length}/${riskConfig.maxOpenPositions || 5}). Skipping order execution.`);
@@ -247,11 +263,6 @@ export class TradingEngine {
     const alreadyOpen = openPositions.some((p) => p.symbol.toUpperCase() === symbol);
     if (alreadyOpen) {
       logger.info('TradingEngine', `[${symbol}] Position already open for this symbol. Skipping order execution.`);
-      return;
-    }
-
-    const signal = report.signal;
-    if (!signal) {
       return;
     }
 

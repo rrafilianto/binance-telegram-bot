@@ -10,11 +10,31 @@ class BinanceClient {
     this.baseURL = ENDPOINTS.rest;
     this.timeOffset = 0; // Difference between local time and Binance server time
     this.isTimeSynced = false;
+    this.bannedUntil = 0; // Expiration timestamp of IP ban or 429 backoff
 
-    this.http = axios.create({
+    const axiosConfig = {
       baseURL: this.baseURL,
       timeout: 15000,
-    });
+    };
+
+    // Proxy support via HTTP_PROXY or HTTPS_PROXY in .env
+    const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+    if (proxyUrl) {
+      try {
+        const parsed = new URL(proxyUrl);
+        axiosConfig.proxy = {
+          protocol: parsed.protocol.replace(':', ''),
+          host: parsed.hostname,
+          port: parseInt(parsed.port, 10),
+          auth: parsed.username ? { username: decodeURIComponent(parsed.username), password: decodeURIComponent(parsed.password) } : undefined,
+        };
+        logger.info('BinanceClient', `Configured proxy for Binance REST API: ${parsed.protocol}//${parsed.hostname}:${parsed.port}`);
+      } catch (proxyErr) {
+        logger.warn('BinanceClient', `Invalid proxy URL ${proxyUrl}: ${proxyErr.message}`);
+      }
+    }
+
+    this.http = axios.create(axiosConfig);
   }
 
   /**
@@ -48,6 +68,14 @@ class BinanceClient {
    * General request wrapper with retries and signature handling
    */
   async request(method, endpoint, params = {}, isSigned = false, retries = 3) {
+    // 1. Guard against sending requests while IP is banned or in 429 backoff
+    if (this.bannedUntil && Date.now() < this.bannedUntil) {
+      const waitSec = Math.ceil((this.bannedUntil - Date.now()) / 1000);
+      throw new Error(
+        `Binance API rate limit / IP ban active. Requests paused for ${waitSec}s (until ${new Date(this.bannedUntil).toLocaleTimeString()}) to prevent ban escalation.`
+      );
+    }
+
     if (isSigned && !this.isTimeSynced) {
       await this.syncTime();
     }
@@ -93,12 +121,41 @@ class BinanceClient {
           data,
           headers,
         });
+
+        // Track 1-minute request weight returned by Binance
+        const usedWeight = parseInt(response.headers?.['x-mbx-used-weight-1m'], 10);
+        if (usedWeight && usedWeight > 1800) {
+          logger.warn('BinanceClient', `High 1-minute request weight: ${usedWeight}/2400. Pausing 500ms...`);
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+
         return response.data;
       } catch (err) {
         const status = err.response?.status;
         const errData = err.response?.data;
         const code = errData?.code;
         const msg = errData?.msg || err.message;
+
+        // Rate Limit HTTP 429
+        if (status === 429) {
+          const retryAfter = parseInt(err.response?.headers?.['retry-after'], 10) || 60;
+          this.bannedUntil = Date.now() + (retryAfter * 1000);
+          logger.error('BinanceClient', `🚨 HTTP 429 Rate Limit hit. Backing off for ${retryAfter}s! (No requests will be sent)`);
+          throw new Error(`Binance Rate Limit (429): Requests paused for ${retryAfter}s.`);
+        }
+
+        // IP Ban error -1003
+        if (code === -1003 || (msg && msg.includes('banned until'))) {
+          const match = (msg || '').match(/banned until (\d+)/i);
+          if (match) {
+            this.bannedUntil = parseInt(match[1], 10);
+          } else {
+            this.bannedUntil = Date.now() + (10 * 60 * 1000); // 10m default
+          }
+          const waitSec = Math.ceil((this.bannedUntil - Date.now()) / 1000);
+          logger.error('BinanceClient', `🚨 IP BAN DETECTED (-1003). Blocking all REST requests for ${waitSec}s until ${new Date(this.bannedUntil).toLocaleTimeString()} to prevent ban extension.`);
+          throw new Error(`Binance API IP Banned (-1003) until ${new Date(this.bannedUntil).toLocaleTimeString()}.`);
+        }
 
         // Check for timestamp error (-1021) -> re-sync time and retry immediately
         if (code === -1021 && attempt < retries) {
@@ -113,13 +170,12 @@ class BinanceClient {
         }
 
         const isTransient =
-          status === 429 ||
           (status >= 500 && status < 600) ||
           err.code === 'ECONNRESET' ||
           err.code === 'ETIMEDOUT';
 
         if (isTransient && attempt < retries) {
-          const delay = Math.pow(2, attempt) * 500;
+          const delay = Math.pow(2, attempt) * 1000;
           logger.warn(
             'BinanceClient',
             `Transient error ${status || err.code} on ${endpoint}. Retrying in ${delay}ms... (Attempt ${attempt}/${retries})`
