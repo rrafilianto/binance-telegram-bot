@@ -1,0 +1,16 @@
+{
+  "htfTimeframe": "1h",
+  "ltfTimeframe": "15m",
+  "emaFastPeriod": 50,
+  "emaSlowPeriod": 200,
+  "rsiPeriod": 14,
+  "rsiOverbought": 70,
+  "rsiOversold": 30,
+  "macdFastPeriod": 12,
+  "macdSlowPeriod": 26,
+  "macdSignalPeriod": 9,
+  "atrPeriod": 14,
+  "atrMultiplierSL": 2.0,
+  "tpSlRatio": 2.0,
+  "trailingCallbackMultiplier": 1.5
+}

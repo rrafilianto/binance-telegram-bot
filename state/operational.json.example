@@ -1,0 +1,7 @@
+{
+  "isStrategyRunning": true,
+  "heartbeatIntervalMinutes": 10,
+  "screeningNotifyMode": "all",
+  "lastProcessedCandles": {},
+  "pendingSignals": {}
+}

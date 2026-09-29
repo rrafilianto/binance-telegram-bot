@@ -1,0 +1,35 @@
+{
+  "name": "binance-futures-trading-bot",
+  "version": "1.0.0",
+  "description": "Binance USDS-M Futures Trading Bot with Telegram Control and Multi-timeframe Technical Strategy",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node test/smokeTest.js",
+    "pm2:dryrun": "pm2 start ecosystem.config.cjs --only binance-bot-dryrun",
+    "pm2:prod": "pm2 start ecosystem.config.cjs --only binance-bot-production",
+    "pm2:stop": "pm2 stop ecosystem.config.cjs",
+    "pm2:restart": "pm2 restart ecosystem.config.cjs",
+    "pm2:logs": "pm2 logs",
+    "pm2:status": "pm2 status"
+  },
+  "keywords": [
+    "binance",
+    "futures",
+    "trading-bot",
+    "telegram-bot",
+    "crypto"
+  ],
+  "author": "Ryan Rafilianto",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "pm2": "^7.0.4",
+    "technicalindicators": "^3.1.0",
+    "telegraf": "^4.16.3",
+    "ws": "^8.18.0"
+  }
+}

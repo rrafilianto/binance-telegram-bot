@@ -1,0 +1,40 @@
+module.exports = {
+  apps: [
+    {
+      name: 'binance-bot-dryrun',
+      script: 'src/index.js',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '300M',
+      restart_delay: 5000,
+      env: {
+        NODE_ENV: 'development',
+        MODE: 'dry_run',
+        ENV_FILE: '.env.dryrun',
+      },
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      error_file: './logs/dryrun-error.log',
+      out_file: './logs/dryrun-out.log',
+      combine_logs: true,
+    },
+    {
+      name: 'binance-bot-production',
+      script: 'src/index.js',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '300M',
+      restart_delay: 5000,
+      env: {
+        NODE_ENV: 'production',
+        MODE: 'production',
+        ENV_FILE: '.env.production',
+      },
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      error_file: './logs/prod-error.log',
+      out_file: './logs/prod-out.log',
+      combine_logs: true,
+    },
+  ],
+};

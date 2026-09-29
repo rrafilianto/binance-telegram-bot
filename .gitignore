@@ -1,0 +1,90 @@
+# ==========================================
+# 1. Environment & API Secrets (CRITICAL)
+# ==========================================
+# Never commit real API keys, secrets, or bot tokens!
+.env
+.env.*
+*.env
+# Allow example templates
+!.env.example
+!.env.*.example
+
+# ==========================================
+# 2. Dependencies
+# ==========================================
+node_modules/
+jspm_packages/
+.pnpm-store/
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# ==========================================
+# 3. Logs & Diagnostics
+# ==========================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+pm2.log
+
+# ==========================================
+# 4. Runtime & Process State
+# ==========================================
+# Live operational trading state (auto-regenerates at runtime)
+state/operational.json
+!state/operational.json.example
+# PM2 & process IDs
+pids/
+*.pid
+*.seed
+*.pid.lock
+.pm2/
+
+# ==========================================
+# 5. OS Generated Files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# ==========================================
+# 6. IDEs & Editors
+# ==========================================
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+*.sublime-project
+*.sublime-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.swp
+*.swo
+*~
+
+# ==========================================
+# 7. Testing & Coverage
+# ==========================================
+coverage/
+.nyc_output/
+
+# ==========================================
+# 8. Temporary & Build Artifacts
+# ==========================================
+tmp/
+temp/
+dist/
+build/
+.cache/
