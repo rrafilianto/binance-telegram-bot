@@ -7,12 +7,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '../../');
 
-const envFile = process.env.ENV_FILE || '.env';
-const targetEnvPath = path.resolve(ROOT_DIR, envFile);
-if (fs.existsSync(targetEnvPath)) {
-  dotenv.config({ path: targetEnvPath });
-} else {
-  dotenv.config({ path: path.resolve(ROOT_DIR, '.env') });
+// Load base .env first
+const baseEnvPath = path.resolve(ROOT_DIR, '.env');
+if (fs.existsSync(baseEnvPath)) {
+  dotenv.config({ path: baseEnvPath });
+}
+
+// Overlay specific environment file (e.g. .env.dryrun or .env.production)
+const envFile = process.env.ENV_FILE;
+if (envFile && envFile !== '.env') {
+  const targetEnvPath = path.resolve(ROOT_DIR, envFile);
+  if (fs.existsSync(targetEnvPath)) {
+    dotenv.config({ path: targetEnvPath, override: true });
+  }
 }
 
 const PATHS = {
