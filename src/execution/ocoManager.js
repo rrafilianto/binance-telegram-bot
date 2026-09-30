@@ -100,7 +100,10 @@ class OcoManager extends EventEmitter {
         }
       }
 
-      const openOrders = await binanceClient.getOpenOrders();
+      let openOrders = [];
+      if (openPositions.size > 0 || this.trackedPositions.size > 0) {
+        openOrders = await binanceClient.getOpenOrders();
+      }
 
       // 1. Reconstruct tracking for open positions (crucial on startup/restart)
       for (const [symbol, pos] of openPositions) {

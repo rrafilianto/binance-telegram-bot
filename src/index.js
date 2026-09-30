@@ -32,12 +32,28 @@ async function main() {
 
   // 2. Start Trading Engine if API key is present
   if (ENV.BINANCE_API_KEY && ENV.BINANCE_API_SECRET) {
-    try {
-      await tradingEngine.start();
-    } catch (err) {
-      logger.error('Main', `Failed to start Trading Engine: ${err.message}`);
-      process.exit(1);
-    }
+    const startWithRetry = async () => {
+      while (true) {
+        try {
+          await tradingEngine.start();
+          break;
+        } catch (err) {
+          logger.error('Main', `Failed to start Trading Engine: ${err.message}`);
+          if (
+            err.message.includes('IP ban') ||
+            err.message.includes('rate limit') ||
+            err.message.includes('-1003') ||
+            err.message.includes('429')
+          ) {
+            logger.warn('Main', 'Active ban/rate-limit detected. Waiting 60s before retrying startup to prevent PM2 restart loop...');
+            await new Promise((resolve) => setTimeout(resolve, 60000));
+          } else {
+            process.exit(1);
+          }
+        }
+      }
+    };
+    await startWithRetry();
   } else {
     logger.warn('Main', 'Bot berjalan dalam mode standby. Harap isi file .env untuk memulai trading engine.');
   }

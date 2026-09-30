@@ -124,9 +124,16 @@ class BinanceClient {
 
         // Track 1-minute request weight returned by Binance
         const usedWeight = parseInt(response.headers?.['x-mbx-used-weight-1m'], 10);
-        if (usedWeight && usedWeight > 1800) {
-          logger.warn('BinanceClient', `High 1-minute request weight: ${usedWeight}/2400. Pausing 500ms...`);
-          await new Promise((resolve) => setTimeout(resolve, 500));
+        if (usedWeight) {
+          if (usedWeight >= 2000) {
+            logger.warn('BinanceClient', `CRITICAL 1-minute request weight: ${usedWeight}/2400. Pausing 10s to prevent ban...`);
+            await new Promise((resolve) => setTimeout(resolve, 10000));
+          } else if (usedWeight >= 1600) {
+            logger.warn('BinanceClient', `High 1-minute request weight: ${usedWeight}/2400. Pausing 3s...`);
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+          } else if (usedWeight >= 1200) {
+            await new Promise((resolve) => setTimeout(resolve, 800));
+          }
         }
 
         return response.data;

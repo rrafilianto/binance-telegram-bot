@@ -71,6 +71,11 @@ export class TradingEngine {
   }
 
   async primeCandleHistory() {
+    if (binanceClient.bannedUntil && Date.now() < binanceClient.bannedUntil) {
+      logger.warn('TradingEngine', 'Candle priming skipped: Binance client is currently in rate-limit/ban cooldown.');
+      return;
+    }
+
     const tokensConfig = getTokensConfig();
     const strategyConfig = getStrategyConfig();
     const activeSymbols = tokensConfig.symbols.slice(0, tokensConfig.maxTokens);
@@ -97,7 +102,7 @@ export class TradingEngine {
         }));
 
         // Small pause between HTF and LTF requests
-        await new Promise((r) => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, 200));
 
         // Fetch LTF candles
         const ltfKlines = await binanceClient.getKlines(symbol, strategyConfig.ltfTimeframe, 100);
@@ -115,10 +120,15 @@ export class TradingEngine {
         this.candleHistory.get(symbol)[strategyConfig.ltfTimeframe] = formattedLtf;
       } catch (err) {
         logger.warn('TradingEngine', `Could not fetch initial candles for ${symbol}: ${err.message}`);
+        // If ban was triggered during fetching, abort loop immediately
+        if (binanceClient.bannedUntil && Date.now() < binanceClient.bannedUntil) {
+          logger.warn('TradingEngine', 'Aborting remaining candle priming due to active rate-limit/ban cooldown.');
+          break;
+        }
       }
 
       // Throttle between symbols to prevent rate limit spikes
-      await new Promise((r) => setTimeout(r, 150));
+      await new Promise((r) => setTimeout(r, 300));
     }
 
     logger.info('TradingEngine', 'Primed candle history for all active symbols.');
