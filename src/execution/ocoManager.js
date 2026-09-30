@@ -84,6 +84,11 @@ class OcoManager extends EventEmitter {
    * Reconstructs in-memory tracking on startup and cleans up orphaned orders
    */
   async reconcile() {
+    if (binanceClient.bannedUntil && Date.now() < binanceClient.bannedUntil) {
+      logger.warn('OcoManager', 'Reconciliation skipped: Binance client is currently in rate-limit/ban cooldown.');
+      return;
+    }
+
     try {
       const positions = await binanceClient.getPositionRisk();
       const openPositions = new Map();

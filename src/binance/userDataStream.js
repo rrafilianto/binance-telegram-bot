@@ -42,7 +42,11 @@ export class UserDataStreamManager extends EventEmitter {
       this.connect();
     } catch (err) {
       logger.error('UserDataStream', `Failed to initialize listenKey: ${err.message}`);
-      setTimeout(() => this.initListenKeyAndConnect(), 10000);
+      let retryDelay = 10000;
+      if (binanceClient.bannedUntil && binanceClient.bannedUntil > Date.now()) {
+        retryDelay = Math.min(binanceClient.bannedUntil - Date.now() + 1000, 5 * 60 * 1000);
+      }
+      setTimeout(() => this.initListenKeyAndConnect(), retryDelay);
     }
   }
 
