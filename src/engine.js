@@ -25,6 +25,8 @@ export class TradingEngine {
     this.isProcessingCandle = false;
     this.screeningBatch = null;
     this.latestScreeningSummary = null;
+    this.isCandlesPrimed = false;
+    this.isPrimingCandles = false;
   }
 
   async start() {
@@ -71,16 +73,19 @@ export class TradingEngine {
   }
 
   async primeCandleHistory() {
+    if (this.isPrimingCandles) return;
     if (binanceClient.bannedUntil && Date.now() < binanceClient.bannedUntil) {
       logger.warn('TradingEngine', 'Candle priming skipped: Binance client is currently in rate-limit/ban cooldown.');
       return;
     }
 
+    this.isPrimingCandles = true;
     const tokensConfig = getTokensConfig();
     const strategyConfig = getStrategyConfig();
     const activeSymbols = tokensConfig.symbols.slice(0, tokensConfig.maxTokens);
 
     logger.info('TradingEngine', `Fetching initial candles for ${activeSymbols.length} symbols (throttled)...`);
+    let successCount = 0;
 
     for (const symbol of activeSymbols) {
       this.candleHistory.set(symbol, {
@@ -118,6 +123,7 @@ export class TradingEngine {
 
         this.candleHistory.get(symbol)[strategyConfig.htfTimeframe] = formattedHtf;
         this.candleHistory.get(symbol)[strategyConfig.ltfTimeframe] = formattedLtf;
+        successCount++;
       } catch (err) {
         logger.warn('TradingEngine', `Could not fetch initial candles for ${symbol}: ${err.message}`);
         // If ban was triggered during fetching, abort loop immediately
@@ -131,7 +137,9 @@ export class TradingEngine {
       await new Promise((r) => setTimeout(r, 300));
     }
 
-    logger.info('TradingEngine', 'Primed candle history for all active symbols.');
+    this.isCandlesPrimed = (successCount >= activeSymbols.length);
+    this.isPrimingCandles = false;
+    logger.info('TradingEngine', `Primed candle history: ${successCount}/${activeSymbols.length} symbols ready.`);
   }
 
   bindEvents() {
@@ -184,6 +192,10 @@ export class TradingEngine {
   }
 
   async handleCandle(candle) {
+    if (!this.isCandlesPrimed && (!binanceClient.bannedUntil || Date.now() >= binanceClient.bannedUntil)) {
+      this.primeCandleHistory().catch(() => {});
+    }
+
     const { symbol, interval, closeTime } = candle;
     const history = this.candleHistory.get(symbol);
     if (!history || !history[interval]) return;
@@ -452,6 +464,12 @@ export class TradingEngine {
 
         if (intervalMinutes > 0) {
           logger.info('TradingEngine', 'Running periodic Heartbeat & safety reconciliation...');
+          // Retry candle priming if incomplete and not in ban cooldown
+          if (!this.isCandlesPrimed && (!binanceClient.bannedUntil || Date.now() >= binanceClient.bannedUntil)) {
+            logger.info('TradingEngine', 'Candle history incomplete. Retrying candle priming in background...');
+            await this.primeCandleHistory();
+          }
+
           // Cross-check & reconcile orders & positions
           await ocoManager.reconcile();
 

@@ -178,6 +178,10 @@ class PositionManager {
       return this.cachedPositions;
     }
 
+    if (binanceClient.bannedUntil && now < binanceClient.bannedUntil) {
+      return this.cachedPositions || [];
+    }
+
     try {
       const positions = await binanceClient.getPositionRisk();
       this.cachedPositions = positions.filter((p) => Math.abs(parseFloat(p.positionAmt)) > 0);
@@ -200,6 +204,10 @@ class PositionManager {
     const now = Date.now();
     if (!forceRefresh && this.cachedBalance !== null && now - this.lastBalanceFetchTime < 60000) {
       return this.cachedBalance;
+    }
+
+    if (binanceClient.bannedUntil && now < binanceClient.bannedUntil) {
+      return this.cachedBalance || null;
     }
 
     try {
