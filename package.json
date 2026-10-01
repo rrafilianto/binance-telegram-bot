@@ -10,9 +10,15 @@
     "test": "node test/smokeTest.js",
     "pm2:dryrun": "pm2 start ecosystem.config.cjs --only binance-bot-dryrun",
     "pm2:prod": "pm2 start ecosystem.config.cjs --only binance-bot-production",
-    "pm2:stop": "pm2 stop ecosystem.config.cjs",
     "pm2:restart": "pm2 restart ecosystem.config.cjs",
+    "pm2:restart:dryrun": "pm2 restart binance-bot-dryrun",
+    "pm2:restart:prod": "pm2 restart binance-bot-production",
+    "pm2:stop": "pm2 stop ecosystem.config.cjs",
+    "pm2:stop:dryrun": "pm2 stop binance-bot-dryrun",
+    "pm2:stop:prod": "pm2 stop binance-bot-production",
     "pm2:logs": "pm2 logs",
+    "pm2:logs:dryrun": "pm2 logs binance-bot-dryrun",
+    "pm2:logs:prod": "pm2 logs binance-bot-production",
     "pm2:status": "pm2 status"
   },
   "keywords": [
